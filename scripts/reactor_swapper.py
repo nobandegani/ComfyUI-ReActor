@@ -2,8 +2,6 @@ import os
 import shutil
 from typing import List, Union
 
-import onnxruntime
-
 import cv2
 import numpy as np
 from PIL import Image
@@ -24,6 +22,8 @@ from scripts.reactor_logger import logger
 from reactor_utils import (
     move_path,
     get_image_md5hash,
+    progress_bar,
+    progress_bar_reset
 )
 from scripts.r_faceboost import swapper, restorer
 
@@ -181,7 +181,12 @@ def half_det_size(det_size):
 
 def analyze_faces(img_data: np.ndarray, det_size=(640, 640)):
     face_analyser = getAnalysisModel(det_size)
-    faces = face_analyser.get(img_data)
+
+    faces = []
+    try:
+        faces = face_analyser.get(img_data)
+    except:
+        logger.error("No faces found")
 
     # Try halving det_size if no faces are found
     if len(faces) == 0 and det_size[0] > 320 and det_size[1] > 320:
@@ -274,12 +279,6 @@ def swap_face(
             logger.info("Source Image the Same? %s", source_image_same)
 
             if SOURCE_FACES is None or not source_image_same:
-                # Log if GPU is available for onnxruntime
-                if 'CUDAExecutionProvider' in onnxruntime.get_available_providers():
-                    logger.status(f"Using onnxruntime-gpu")
-                else:
-                    logger.status(f"Using onnxruntime (CPU)")
-
                 logger.status("Analyzing Source Image...")
                 source_faces = analyze_faces(source_img)
                 SOURCE_FACES = source_faces
@@ -451,12 +450,6 @@ def swap_face_many(
             logger.info("Source Image the Same? %s", source_image_same)
 
             if SOURCE_FACES is None or not source_image_same:
-                # Log if GPU is available for onnxruntime
-                if 'CUDAExecutionProvider' in onnxruntime.get_available_providers():
-                    logger.status(f"Using onnxruntime-gpu")
-                else:
-                    logger.status(f"Using onnxruntime (CPU)")
-
                 logger.status("Analyzing Source Image...")
                 source_faces = analyze_faces(source_img)
                 SOURCE_FACES = source_faces
@@ -477,6 +470,13 @@ def swap_face_many(
         if source_faces is not None:
 
             target_faces = []
+            pbar = progress_bar(len(target_imgs))
+
+            if len(TARGET_IMAGE_LIST_HASH) > 0:
+                logger.status(f"Using Hashed Target Face(s) Model...")
+            else:
+                logger.status(f"Analyzing Target Image...")
+            
             for i, target_img in enumerate(target_imgs):
                 if state.interrupted or model_management.processing_interrupted():
                     logger.status("Interrupted by User")
@@ -498,19 +498,19 @@ def swap_face_many(
                 logger.info("(Image %s) Target Image the Same? %s", i, target_image_same)
 
                 if len(TARGET_FACES_LIST) == 0:
-                    logger.status(f"Analyzing Target Image {i}...")
+                    # logger.status(f"Analyzing Target Image {i}...")
                     target_face = analyze_faces(target_img)
                     TARGET_FACES_LIST = [target_face]
                 elif len(TARGET_FACES_LIST) == i and not target_image_same:
-                    logger.status(f"Analyzing Target Image {i}...")
+                    # logger.status(f"Analyzing Target Image {i}...")
                     target_face = analyze_faces(target_img)
                     TARGET_FACES_LIST.append(target_face)
                 elif len(TARGET_FACES_LIST) != i and not target_image_same:
-                    logger.status(f"Analyzing Target Image {i}...")
+                    # logger.status(f"Analyzing Target Image {i}...")
                     target_face = analyze_faces(target_img)
                     TARGET_FACES_LIST[i] = target_face
                 elif target_image_same:
-                    logger.status("(Image %s) Using Hashed Target Face(s) Model...", i)
+                    # logger.status("(Image %s) Using Hashed Target Face(s) Model...", i)
                     target_face = TARGET_FACES_LIST[i]
                 
 
@@ -518,7 +518,11 @@ def swap_face_many(
                 # target_face = analyze_faces(target_img)
                 if target_face is not None:
                     target_faces.append(target_face)
+                
+                pbar.update(1)
 
+            progress_bar_reset(pbar)
+            
             # No use in trying to swap faces if no faces are found, enhancement
             if len(target_faces) == 0:
                 logger.status("Cannot detect any Target, skipping swapping...")
@@ -541,6 +545,8 @@ def swap_face_many(
 
                 source_face_idx = 0
 
+                pbar = progress_bar(len(target_imgs))
+
                 for face_num in faces_index:
                     # No use in trying to swap faces if no further faces are found, enhancement
                     if face_num >= len(target_faces):
@@ -553,11 +559,11 @@ def swap_face_many(
 
                     if source_face is not None and src_wrong_gender == 0:
                         # Reading results to make current face swap on a previous face result
+                        logger.status(f"Swapping...")
                         for i, (target_img, target_face) in enumerate(zip(results, target_faces)):
                             target_face_single, wrong_gender = get_face_single(target_img, target_face, face_index=face_num, gender_target=gender_target, order=faces_order[0])
                             if target_face_single is not None and wrong_gender == 0:
                                 result = target_img
-                                logger.status(f"Swapping {i}...")
                                 if face_boost_enabled:
                                     logger.status(f"Face Boost is enabled")
                                     bgr_fake, M = face_swapper.get(target_img, target_face_single, source_face, paste_back=False)
@@ -568,18 +574,23 @@ def swap_face_many(
                                     # logger.status(f"Swapping as-is")
                                     result = face_swapper.get(target_img, target_face_single, source_face)
                                 results[i] = result
+                                pbar.update(1)
                             elif wrong_gender == 1:
                                 wrong_gender = 0
                                 logger.status("Wrong target gender detected")
+                                pbar.update(1)
                                 continue
                             else:
                                 logger.status(f"No target face found for {face_num}")
+                                pbar.update(1)
                     elif src_wrong_gender == 1:
                         src_wrong_gender = 0
                         logger.status("Wrong source gender detected")
                         continue
                     else:
                         logger.status(f"No source face found for face number {source_face_idx}.")
+
+                progress_bar_reset(pbar)
 
                 result_images = [Image.fromarray(cv2.cvtColor(result, cv2.COLOR_BGR2RGB)) for result in results]
 

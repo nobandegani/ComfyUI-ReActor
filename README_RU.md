@@ -2,7 +2,7 @@
 
   <img src="https://github.com/Gourieff/Assets/raw/main/sd-webui-reactor/ReActor_logo_NEW_RU.png?raw=true" alt="logo" width="180px"/>
 
-  ![Version](https://img.shields.io/badge/версия_нода-0.6.0_alpha1-lightgreen?style=for-the-badge&labelColor=darkgreen)
+  ![Version](https://img.shields.io/badge/версия_нода-0.6.1_beta2-green?style=for-the-badge&labelColor=darkgreen)
   
   <!--<sup>
   <font color=brightred>
@@ -51,7 +51,14 @@
 
 ## Что нового в последнем обновлении
 
-### 0.6.0 <sub><sup>ALPHA1</sup></sub>
+### 0.6.1 <sub><sup>BETA1, BETA2</sup></sub>
+
+- MaskHelper нод теперь почти вдвое быстрее - пока не идеально, но лучше, чем было ранее
+- Нативный ProgressBar ComfyUI для разных шагов
+- Добавлен выход ORIGINAL_IMAGE для основных нодов
+- Разные исправления и улучшения (https://github.com/Gourieff/ComfyUI-ReActor/issues/25 фикс; временные файлы для NSFW детектора больше не создаются; NSFW детектор стал работать немного быстрее)
+
+### 0.6.0
 
 - Новый нод `ReActorSetWeight` - теперь можно установить силу замены лица для `source_image` или `face_model` от 0% до 100% (с шагом 12.5%)
 
